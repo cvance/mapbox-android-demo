@@ -11,7 +11,13 @@ import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
 import com.mapbox.mapboxsdk.maps.Style;
 import com.mapbox.mapboxsdk.style.layers.CircleLayer;
+import com.mapbox.mapboxsdk.style.layers.FillLayer;
+import com.mapbox.mapboxsdk.style.sources.TileSet;
 import com.mapbox.mapboxsdk.style.sources.VectorSource;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
 
 import static com.mapbox.mapboxsdk.style.expressions.Expression.exponential;
 import static com.mapbox.mapboxsdk.style.expressions.Expression.get;
@@ -21,7 +27,10 @@ import static com.mapbox.mapboxsdk.style.expressions.Expression.rgb;
 import static com.mapbox.mapboxsdk.style.expressions.Expression.stop;
 import static com.mapbox.mapboxsdk.style.expressions.Expression.zoom;
 import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.circleColor;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.circleOpacity;
 import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.circleRadius;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.fillColor;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.fillOpacity;
 
 /**
  * Use data-driven styling to set circles' colors based on imported vector data.
@@ -46,34 +55,42 @@ public class StyleCirclesCategoricallyActivity extends AppCompatActivity {
     mapView.getMapAsync(new OnMapReadyCallback() {
       @Override
       public void onMapReady(@NonNull final MapboxMap mapboxMap) {
+                Style.Builder builder = new Style.Builder()
+                        .fromUrl("https://cdn.airmap.com/static/map-styles/stage/0.10.0-beta1/standard.json");
+                mapboxMap.setStyle(builder, new Style.OnStyleLoaded() {
+                    @Override
+                    public void onStyleLoaded(@NonNull Style style) {
+                        Map<String, String> sourceMap = new HashMap<>();
+                        sourceMap.put("usa_ama", "ama_field");
+                        sourceMap.put("usa_fish_wildlife_refuge", "park");
+                        sourceMap.put("usa_national_marine_sanctuary", "park");
+                        sourceMap.put("usa_national_park", "park");
+                        sourceMap.put("usa_sec_91", "emergency,fire,special_use_airspace,tfr,wildfire");
+                        sourceMap.put("usa_sec_336", "airport,controlled_airspace");
+                        sourceMap.put("usa_wilderness_area", "park");
+                        sourceMap.put("usa_airmap_rules", "airport,hospital,power_plant,prison,school");
 
-        mapboxMap.setStyle(Style.LIGHT, new Style.OnStyleLoaded() {
-          @Override
-          public void onStyleLoaded(@NonNull Style style) {
-            style.addSource(new VectorSource(
-                "ethnicity-source",
-                "http://api.mapbox.com/v4/examples.8fgz4egr.json?access_token=" + Mapbox.getAccessToken()
-            ));
+                        for (String source : sourceMap.keySet()) {
+                            String layers = sourceMap.get(source);
 
-            CircleLayer circleLayer = new CircleLayer("population", "ethnicity-source");
-            circleLayer.setSourceLayer("sf2010");
-            circleLayer.withProperties(
-              circleRadius(
-                interpolate(
-                  exponential(1.75f),
-                  zoom(),
-                  stop(12, 2f),
-                  stop(22, 180f)
-                )),
-              circleColor(
-                match(get("ethnicity"), rgb(0, 0, 0),
-                  stop("white", rgb(251, 176, 59)),
-                  stop("Black", rgb(34, 59, 83)),
-                  stop("Hispanic", rgb(229, 94, 94)),
-                  stop("Asian", rgb(59, 178, 208)),
-                  stop("Other", rgb(204, 204, 204)))));
+                            String urlTemplates = "https://stage.api.airmap.com/tiledata/v1/" + source + "/" + layers + "/{z}/{x}/{y}";
+                            TileSet tileSet = new TileSet("2.2.0", urlTemplates);
+                            tileSet.setMaxZoom(12f);
+                            tileSet.setMinZoom(8f);
+                            VectorSource tileSource = new VectorSource(source, tileSet);
+                            style.addSource(tileSource);
 
-            style.addLayer(circleLayer);
+                            String[] layersArray = layers.split(",");
+                            for (String layer : layersArray) {
+                                FillLayer fillLayer = new FillLayer("airmap|" + source + "|" +  layer, source)
+                                        .withProperties(
+                                                fillOpacity(0.2f),
+                                                fillColor(rgb(new Random().nextInt(255), new Random().nextInt(255), new Random().nextInt(255)))
+                                        );
+                                fillLayer.setSourceLayer(source + "_" + layer);
+                                style.addLayer(fillLayer);
+                            }
+                        }
           }
         });
       }
